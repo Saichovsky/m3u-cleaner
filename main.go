@@ -132,7 +132,11 @@ func fetchAndParseM3U(client *http.Client, url string) ([]Channel, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("error closing response body: %v", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("HTTP status %d", resp.StatusCode)
@@ -222,12 +226,16 @@ func validateChannels(channels []Channel, timeout time.Duration, onProgress ...f
 				resp, err := checkClient.Do(req)
 				if err == nil && resp.StatusCode == http.StatusOK {
 					// Early cancellation: close body without reading to save bandwidth
-					resp.Body.Close()
+					if cerr := resp.Body.Close(); cerr != nil {
+						log.Printf("error closing response body: %v", cerr)
+					}
 					chCopy := ch
 					results <- &chCopy
 				} else {
 					if resp != nil {
-						resp.Body.Close()
+						if cerr := resp.Body.Close(); cerr != nil {
+							log.Printf("error closing response body: %v", cerr)
+						}
 					}
 					results <- nil
 				}

@@ -56,7 +56,9 @@ http://example.com/channel4.m3u8
 `
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(m3uContent))
+		if _, err := w.Write([]byte(m3uContent)); err != nil {
+			t.Errorf("failed to write response: %v", err)
+		}
 	}))
 	defer ts.Close()
 
@@ -157,20 +159,23 @@ func TestFilterLowRes_Default(t *testing.T) {
 func TestValidateChannels(t *testing.T) {
 	// Create test server that responds to specific URLs
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/good.m3u8" {
+		switch r.URL.Path {
+		case "/good.m3u8":
 			w.WriteHeader(http.StatusOK)
 			w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 			// Write minimal valid HLS content
-			w.Write([]byte("#EXTM3U\n"))
-		} else if r.URL.Path == "/bad.m3u8" {
+			if _, err := w.Write([]byte("#EXTM3U\n")); err != nil {
+				t.Errorf("failed to write response: %v", err)
+			}
+		case "/bad.m3u8":
 			w.WriteHeader(http.StatusNotFound)
-		} else if r.URL.Path == "/server-error.m3u8" {
+		case "/server-error.m3u8":
 			w.WriteHeader(http.StatusInternalServerError)
-		} else if r.URL.Path == "/redirect-good.m3u8" {
+		case "/redirect-good.m3u8":
 			http.Redirect(w, r, "/good.m3u8", http.StatusMovedPermanently)
-		} else if r.URL.Path == "/redirect-dead.m3u8" {
+		case "/redirect-dead.m3u8":
 			http.Redirect(w, r, "/bad.m3u8", http.StatusMovedPermanently)
-		} else {
+		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
