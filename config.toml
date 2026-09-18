@@ -1,0 +1,21 @@
+# Sample configuration for m3u-cleaner.
+# Optional: copy to config.toml and pass via --config=config.toml or CONFIG=config.toml.
+
+# Channels to exclude. Each word is a case-insensitive substring matched
+# against a channel's EXTINF metadata (name, group, tvg-id). Any match drops
+# the channel. Example: "bbc pashto" removes all BBC Pashto variants.
+exclude_channels = [
+  "BBC News Pashto",
+  "XITE",
+  # "cbeebies",
+  # "al jazeera",
+]
+
+# Minimum resolution: channels explicitly below this are removed.
+min_resolution_height = 720
+
+# Per-request timeout (seconds) for stream URL validation.
+timeout_seconds = 10
+
+# Number of concurrent stream checks.
+concurrency = 50
