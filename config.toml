@@ -1,5 +1,13 @@
 # Sample configuration for m3u-cleaner.
-# Optional: copy to config.toml and pass via --config=config.toml or CONFIG=config.toml.
+# A config file is mandatory — pass via --config=config.toml or CONFIG=config.toml.
+
+# REQUIRED: Playlist URLs to fetch and process. Each must be a valid HTTP(S)
+# URL pointing to an M3U playlist.
+playlist_urls = [
+  "https://iptv-org.github.io/iptv/countries/ke.m3u",
+  "https://iptv-org.github.io/iptv/countries/uk.m3u",
+  "https://iptv-org.github.io/iptv/countries/us.m3u",
+]
 
 # Channels to exclude. Each word is a case-insensitive substring matched
 # against a channel's EXTINF metadata (name, group, tvg-id). Any match drops
