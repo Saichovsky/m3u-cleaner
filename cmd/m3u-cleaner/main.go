@@ -2,12 +2,10 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"m3u-cleaner/internal/config"
@@ -19,12 +17,11 @@ func main() {
 	startTime := time.Now()
 
 	// 1. Parse CLI flags and Environment Variables
-	countriesFlag := flag.String("countries", "", "Comma-separated list of country codes (e.g. ke,uk,us)")
 	outDirFlag := flag.String("outdir", "", "Target directory for the generated index.m3u")
-	configFlag := flag.String("config", "", "Path to a TOML config file")
+	configFlag := flag.String("config", "", "Path to a TOML config file (required)")
 	flag.Parse()
 
-	// Resolve config path: Flag -> ENV -> empty (defaults)
+	// Config path: Flag -> ENV (mandatory — app won't run without it)
 	configPath := *configFlag
 	if configPath == "" {
 		configPath = os.Getenv("CONFIG")
@@ -34,9 +31,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
-	if configPath != "" {
-		log.Printf("Loaded config from %s", configPath)
-	}
+	log.Printf("Loaded config from %s", configPath)
 
 	// Resolve target directory: Flag -> ENV -> Default
 	listDir := *outDirFlag
@@ -47,42 +42,30 @@ func main() {
 		listDir = "/usr/share/nginx/html"
 	}
 
-	// Resolve countries list: Flag -> ENV -> Default
-	countriesInput := *countriesFlag
-	if countriesInput == "" {
-		countriesInput = os.Getenv("COUNTRIES")
-	}
-	if countriesInput == "" {
-		countriesInput = "ke,uk,us" // Default fallback
-	}
-
-	countries := parseCountries(countriesInput)
-
 	log.SetFlags(log.Ldate | log.Ltime)
-	log.Printf("Starting IPTV Playlist Pipeline for countries: %v", countries)
+	log.Printf("Starting IPTV Playlist Pipeline for %d playlist(s)", len(cfg.PlaylistURLs))
 
 	// 2. Fetch Playlists
 	client := &http.Client{Timeout: iptv.FetchTimeoutSeconds * time.Second}
 	var channels []iptv.Channel
-	var processedCountries []string
+	var processedURLs []string
 
-	for _, country := range countries {
-		url := fmt.Sprintf("https://iptv-org.github.io/iptv/countries/%s.m3u", country)
+	for _, url := range cfg.PlaylistURLs {
 		log.Printf("Fetching: %s", url)
 
 		parsed, err := iptv.FetchAndParseM3U(client, url)
 		if err != nil {
-			log.Printf("Warning: Error processing country '%s': %v", country, err)
+			log.Printf("Warning: Error fetching %s: %v", url, err)
 			continue
 		}
 		channels = append(channels, parsed...)
-		processedCountries = append(processedCountries, country)
-		log.Printf("Fetched country '%s': %d channels (cumulative: %d)", country, len(parsed), len(channels))
+		processedURLs = append(processedURLs, url)
+		log.Printf("Fetched %s: %d channels (cumulative: %d)", url, len(parsed), len(channels))
 	}
 
 	log.Printf("Total entries fetched: %d", len(channels))
 	if len(channels) == 0 {
-		log.Fatal("No valid channels retrieved from given countries.")
+		log.Fatal("No valid channels retrieved from configured playlists.")
 	}
 
 	// 3. Filter Out Low-Resolution Channels (< configured height)
@@ -108,22 +91,9 @@ func main() {
 
 	duration := time.Since(startTime)
 	log.Println("--- SUMMARY ---")
-	log.Printf("Countries processed: %v", processedCountries)
+	log.Printf("Playlists processed: %v", processedURLs)
 	log.Printf("Total entries fetched: %d", len(channels))
 	log.Printf("Valid channels saved:  %d", len(validChannels))
 	log.Printf("Clean playlist saved:  %s", outputPath)
 	log.Printf("Total execution time:  %.2f seconds", duration.Seconds())
-}
-
-// parseCountries splits a comma-separated string into cleaned country codes.
-func parseCountries(input string) []string {
-	raw := strings.Split(input, ",")
-	var result []string
-	for _, c := range raw {
-		cleaned := strings.ToLower(strings.TrimSpace(c))
-		if cleaned != "" {
-			result = append(result, cleaned)
-		}
-	}
-	return result
 }

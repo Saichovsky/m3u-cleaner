@@ -23,13 +23,12 @@ COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 # Copy static binary
 COPY --from=builder /app/iptv-cleaner /iptv-cleaner
 
-# Sample config, baked in as a reference/drop-in target. Not enabled by default:
-# point CONFIG at it (e.g. -e CONFIG=/etc/iptv/config.toml) or mount your own
-# config over this path.
+# Sample config baked into the image. Required at runtime — the app will
+# fail without it. The CONFIG env var points to it by default.
 COPY config.toml /etc/iptv/config.toml
 
 # Default environment variables
-ENV COUNTRIES="ke,uk,us"
+ENV CONFIG=/etc/iptv/config.toml
 ENV LISTDIR="/usr/share/nginx/html"
 
 USER 10001:10001
