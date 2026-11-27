@@ -1,14 +1,15 @@
 # m3u-cleaner
 
-A Go-based IPTV playlist cleaner designed to run as an init container in Kubernetes. It fetches IPTV channel playlists from configurable URLs, filters out low-resolution channels, validates stream availability, and generates a clean M3U playlist for use with IPTV web services.
+A Go-based IPTV playlist cleaner designed to run as an init container in Kubernetes. It fetches TV and radio playlists from configurable URLs, filters low-resolution TV channels, validates stream availability, and generates a single clean M3U playlist for use with IPTV web services.
 
 ## Features
 
-- Fetches channel playlists from configurable URLs (not hard-coded to a single source)
-- Filters out low-resolution channels (explicit resolutions below configurable height, default 720p)
-- Excludes channels by configurable keywords (case-insensitive substring match, e.g. `bbc pashto`)
-- Validates stream availability using concurrent HTTP requests
-- Generates a clean `index.m3u` playlist file
+- Fetches TV and radio playlists from independently configured sections
+- Filters out low-resolution TV channels only (explicit resolutions below configurable height, default 720p)
+- Tags radio entries with `radio="true"` for players that distinguish audio stations
+- Excludes channels per section by configurable keywords (case-insensitive substring match, e.g. `bbc pashto`)
+- Validates stream availability using per-section timeout and concurrency settings
+- Generates a single clean `index.m3u` playlist file
 - Skips all work when `index.m3u` already exists, unless `--force` is passed
 - Designed to run quickly as a Kubernetes init container
 - Minimal Docker image using multi-stage build (scratch base)
@@ -16,11 +17,11 @@ A Go-based IPTV playlist cleaner designed to run as an init container in Kuberne
 
 ## How It Works
 
-1. **Fetch**: Downloads M3U playlists from URLs listed in the config file
-2. **Filter**: Removes channels with an explicit resolution below the configured height (e.g. "(360p)", "(480p)"). Channels without a resolution marker are kept, since most do not declare one. Adult content is not included in most feeds, so no separate adult filter is needed.
-3. **Exclude**: Drops any channel whose EXTINF metadata matches an exclude keyword
-4. **Validate**: Concurrently checks if stream URLs are accessible (HTTP 200)
-5. **Output**: Writes valid channels to `index.m3u` in the specified output directory
+1. **Fetch**: Downloads M3U playlists from the `[tv]` and `[radio]` sections of the config file
+2. **Tag**: Adds `radio="true"` to radio entries that do not already declare it
+3. **Filter**: For TV, removes channels with an explicit resolution below the configured height (e.g. "(360p)", "(480p)"); channels without a resolution marker are kept. Radio is not resolution-filtered. Each section then applies its own exclude keywords. Adult content is not included in most feeds, so no separate adult filter is needed.
+4. **Validate**: Concurrently checks if stream URLs are accessible (HTTP 200), using each section's timeout and concurrency
+5. **Output**: Writes valid TV channels followed by valid radio channels to a single `index.m3u` in the specified output directory
 
 If `index.m3u` already exists in the output directory, the application logs that
 it is skipping and exits successfully (code 0) **before** fetching anything.
@@ -132,42 +133,49 @@ A TOML config file is **mandatory**. The application will not start without one.
 See `config.toml` for the full example.
 
 ```toml
-# REQUIRED: Playlist URLs to fetch and process
+# TV section: resolution filtering and TV-specific validation settings
+[tv]
 playlist_urls = [
   "https://iptv-org.github.io/iptv/countries/ke.m3u",
   "https://iptv-org.github.io/iptv/countries/uk.m3u",
   "https://iptv-org.github.io/iptv/countries/us.m3u",
 ]
-
-# OPTIONAL: Channels to exclude (case-insensitive substring match)
 exclude_channels = ["bbc pashto", "cbeebies"]
-
-# OPTIONAL: Minimum resolution height (default: 720)
 min_resolution_height = 720
-
-# OPTIONAL: Per-request timeout for stream validation (default: 10)
 timeout_seconds = 10
-
-# OPTIONAL: Number of concurrent stream checks (default: 50)
 concurrency = 50
+
+# Radio section: entries are tagged radio="true" in the output
+[radio]
+playlist_urls = [
+  "https://raw.githubusercontent.com/AlonDrilich/radio-playlists/refs/heads/main/countries/ke.m3u",
+]
+exclude_channels = ["ghett", "CARRIBEAN"]
+timeout_seconds = 15
+concurrency = 20
 ```
 
 | Field | Required | Default | Description |
 |---|---|---|---|
-| `playlist_urls` | **Yes** | — | List of M3U playlist URLs to fetch and process |
-| `exclude_channels` | No | none | Substrings (case-insensitive) matched against EXTINF metadata; matches are dropped |
-| `min_resolution_height` | No | 720 | Channels with an explicit resolution below this are removed |
-| `timeout_seconds` | No | 10 | Per-request timeout for stream URL validation |
-| `concurrency` | No | 50 | Number of parallel stream URL checks |
+| `[tv].playlist_urls` | Yes* | — | List of TV M3U playlist URLs to fetch and process |
+| `[tv].exclude_channels` | No | none | Substrings (case-insensitive) matched against TV EXTINF metadata; matches are dropped |
+| `[tv].min_resolution_height` | No | 720 | TV channels with an explicit resolution below this are removed |
+| `[tv].timeout_seconds` | No | 10 | Per-request timeout for TV stream URL validation |
+| `[tv].concurrency` | No | 50 | Number of parallel TV stream URL checks |
+| `[radio].playlist_urls` | Yes* | — | List of radio M3U playlist URLs to fetch and process |
+| `[radio].exclude_channels` | No | none | Substrings (case-insensitive) matched against radio EXTINF metadata; matches are dropped |
+| `[radio].timeout_seconds` | No | 15 | Per-request timeout for radio stream URL validation |
+| `[radio].concurrency` | No | 20 | Number of parallel radio stream URL checks |
+
+\* At least one of `[tv].playlist_urls` or `[radio].playlist_urls` must contain a URL. A TV-only or radio-only config is valid. `min_resolution_height` applies only to TV and is not used under `[radio]`.
 
 ### Validation
 
 The config is validated at startup. The following rules are enforced:
 
-- `playlist_urls` must contain at least one URL
-- `min_resolution_height` must be positive (> 0)
-- `timeout_seconds` must be positive (> 0)
-- `concurrency` must be positive (> 0)
+- At least one of `tv.playlist_urls` or `radio.playlist_urls` must contain a URL
+- If `[tv]` has URLs: `min_resolution_height`, `timeout_seconds`, and `concurrency` must be positive (> 0)
+- If `[radio]` has URLs: `timeout_seconds` and `concurrency` must be positive (> 0)
 
 Invalid configs cause the application to exit immediately with a non-zero exit code and a descriptive error message.
 
@@ -186,8 +194,8 @@ Configuration precedence: Flag → Environment Variable
 
 ## Performance
 
-- Uses concurrent stream validation (50 workers by default, configurable)
-- 10-second timeout per stream validation (configurable); 15 seconds for playlist fetches
+- Uses concurrent stream validation with per-section settings (TV: 50 workers/10s, radio: 20 workers/15s by default)
+- 15 seconds for playlist fetches
 - Early cancellation: closes HTTP connection immediately after receiving HTTP 200 status to save bandwidth
 - Efficient streaming M3U parsing without loading entire files into memory
 - Low-resolution and exclude filters run in-memory before validation to avoid needless HTTP requests
@@ -195,13 +203,15 @@ Configuration precedence: Flag → Environment Variable
 
 ## Output
 
-Generates a standard M3U playlist file named `index.m3u` in the specified output directory:
+Generates a single standard M3U playlist file named `index.m3u` in the specified output directory. TV channels are written first, followed by radio channels; radio entries carry `radio="true"`:
 ```
 #EXTM3U
 #EXTINF:-1 tvg-id="bbc.one.uk" group-title="General" ,BBC One
 http://example.com/bbc1.m3u8
 #EXTINF:-1 tvg-id="channel4.uk" group-title="General" ,Channel 4
 http://example.com/channel4.m3u8
+#EXTINF:-1 group-title="Kenya" radio="true",KBC
+http://stream.example.com/kbc
 ```
 
 ## Building
