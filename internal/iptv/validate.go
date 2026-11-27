@@ -16,9 +16,6 @@ const (
 	UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
 )
 
-// DefaultTimeout is used when a caller passes a non-positive timeout.
-const DefaultTimeout = TimeoutSeconds * time.Second
-
 // ProgressReporter logs periodic progress lines, throttled to integer
 // percentage changes so long-running phases stay visible without spamming.
 type ProgressReporter struct {
@@ -43,21 +40,9 @@ func (p *ProgressReporter) Report(phase string, done, total, valid int) {
 	log.Printf("%s: %d/%d (%d%%), %d valid", phase, done, total, percent, valid)
 }
 
-// ValidateChannels concurrently checks stream availability with
-// ConcurrentChecks workers and returns the channels that respond HTTP 200.
-func ValidateChannels(channels []Channel, timeout time.Duration, onProgress ...func(done, total, valid int)) []Channel {
-	return ValidateChannelsN(channels, timeout, ConcurrentChecks, onProgress...)
-}
-
-// ValidateChannelsN is ValidateChannels with a configurable worker count.
-// Non-positive timeout and worker counts fall back to the package defaults.
+// ValidateChannelsN concurrently checks stream availability with workers
+// parallel requests and returns the channels that respond HTTP 200.
 func ValidateChannelsN(channels []Channel, timeout time.Duration, workers int, onProgress ...func(done, total, valid int)) []Channel {
-	if timeout <= 0 {
-		timeout = DefaultTimeout
-	}
-	if workers <= 0 {
-		workers = ConcurrentChecks
-	}
 	checkClient := &http.Client{Timeout: timeout}
 
 	jobs := make(chan Channel, len(channels))

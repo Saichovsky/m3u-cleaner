@@ -2,6 +2,8 @@ package playlist
 
 import (
 	"bufio"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -10,6 +12,20 @@ import (
 
 // OutputFile is the name of the generated playlist.
 const OutputFile = "index.m3u"
+
+// Exists reports whether path exists. A missing path is (false, nil);
+// other stat failures are returned so callers can distinguish "absent"
+// from "cannot determine".
+func Exists(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, fs.ErrNotExist) {
+		return false, nil
+	}
+	return false, err
+}
 
 // WritePlaylist writes the channels to outputPath as a standard M3U file,
 // creating parent directories as needed. The existing file is truncated in

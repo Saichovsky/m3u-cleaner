@@ -10,6 +10,31 @@ import (
 	"m3u-cleaner/internal/iptv"
 )
 
+// Test Exists reports whether the playlist file is present
+func TestExists(t *testing.T) {
+	dir := t.TempDir()
+
+	exists, err := Exists(filepath.Join(dir, "missing.m3u"))
+	if err != nil {
+		t.Fatalf("Exists returned error for missing file: %v", err)
+	}
+	if exists {
+		t.Error("Exists = true for missing file")
+	}
+
+	path := filepath.Join(dir, "present.m3u")
+	if err := os.WriteFile(path, []byte("#EXTM3U\n"), 0644); err != nil {
+		t.Fatalf("Failed to seed file: %v", err)
+	}
+	exists, err = Exists(path)
+	if err != nil {
+		t.Fatalf("Exists returned error for present file: %v", err)
+	}
+	if !exists {
+		t.Error("Exists = false for present file")
+	}
+}
+
 // Test the playlist writing function
 func TestWritePlaylist(t *testing.T) {
 	dir := t.TempDir()
