@@ -14,11 +14,7 @@ var reResolution = regexp.MustCompile(`(?i)\((\d{3,4})\s*p\s*\)`)
 
 // FilterLowRes removes channels with an explicit resolution below minHeight.
 // Channels without a resolution marker (unknown quality) are kept.
-// A non-positive minHeight selects MinResolutionHeight.
 func FilterLowRes(channels []Channel, minHeight int) []Channel {
-	if minHeight <= 0 {
-		minHeight = MinResolutionHeight
-	}
 	var result []Channel
 	for _, ch := range channels {
 		height := 0

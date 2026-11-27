@@ -9,6 +9,7 @@ A Go-based IPTV playlist cleaner designed to run as an init container in Kuberne
 - Excludes channels by configurable keywords (case-insensitive substring match, e.g. `bbc pashto`)
 - Validates stream availability using concurrent HTTP requests
 - Generates a clean `index.m3u` playlist file
+- Skips all work when `index.m3u` already exists, unless `--force` is passed
 - Designed to run quickly as a Kubernetes init container
 - Minimal Docker image using multi-stage build (scratch base)
 - Configurable via a mandatory TOML config file
@@ -21,6 +22,10 @@ A Go-based IPTV playlist cleaner designed to run as an init container in Kuberne
 4. **Validate**: Concurrently checks if stream URLs are accessible (HTTP 200)
 5. **Output**: Writes valid channels to `index.m3u` in the specified output directory
 
+If `index.m3u` already exists in the output directory, the application logs that
+it is skipping and exits successfully (code 0) **before** fetching anything.
+Pass `--force` to regenerate the playlist.
+
 The output file is rewritten **in place** (truncate, never temp-file + rename) so the existing inode of `index.m3u` is preserved for the pod that serves it.
 
 ## Project Structure
@@ -29,7 +34,7 @@ The output file is rewritten **in place** (truncate, never temp-file + rename) s
 cmd/m3u-cleaner/       CLI entrypoint: flags/env parsing and pipeline orchestration
 internal/config/       TOML config loading, defaults, and validation
 internal/iptv/         IPTV domain: M3U parsing, filtering, stream validation
-internal/playlist/     M3U playlist writer (in-place, inode-preserving)
+internal/playlist/     Playlist existence check and writer (in-place, inode-preserving)
 config.toml            Example config file (mandatory)
 ```
 
@@ -48,6 +53,9 @@ CONFIG=config.toml go run ./cmd/m3u-cleaner
 
 # Override output directory
 go run ./cmd/m3u-cleaner --config=config.toml --outdir=/path/to/output
+
+# Regenerate even when index.m3u already exists
+go run ./cmd/m3u-cleaner --config=config.toml --force
 ```
 
 ### As a Docker Container
@@ -73,6 +81,9 @@ docker run --rm \
   m3u-cleaner --config=/etc/iptv/config.toml
 ```
 
+If `/output/index.m3u` already exists, the container skips regeneration and
+exits successfully. Add `--force` to regenerate it.
+
 ### As a Kubernetes Init Container
 
 ```yaml
@@ -89,6 +100,9 @@ spec:
       value: "/usr/share/nginx/html"
     - name: CONFIG
       value: "/etc/iptv/config.toml"
+    # Regenerate index.m3u on every pod start. Remove --force to reuse an
+    # existing playlist on a persistent volume.
+    args: ["--force"]
     volumeMounts:
     - name: playlist-volume
       mountPath: /usr/share/nginx/html
@@ -166,6 +180,7 @@ Invalid configs cause the application to exit immediately with a non-zero exit c
 
 - `--config`: Override `CONFIG` environment variable
 - `--outdir`: Override `LISTDIR` environment variable
+- `--force`: Regenerate `index.m3u` even if it already exists
 
 Configuration precedence: Flag → Environment Variable
 

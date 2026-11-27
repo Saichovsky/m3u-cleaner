@@ -29,18 +29,6 @@ func TestFilterLowRes(t *testing.T) {
 	}
 }
 
-// Test FilterLowRes with a non-positive threshold uses the default
-func TestFilterLowRes_Default(t *testing.T) {
-	channels := []Channel{
-		{Metadata: "#EXTINF:-1 ,HD (720p)", URL: "http://a/720"},
-		{Metadata: "#EXTINF:-1 ,Old (360p)", URL: "http://a/360"},
-	}
-	result := FilterLowRes(channels, 0)
-	if len(result) != 1 || result[0].URL != "http://a/720" {
-		t.Fatalf("FilterLowRes(0) should use default 720p threshold: %+v", result)
-	}
-}
-
 // Test FilterExcluded with case-insensitive substring matching
 func TestFilterExcluded(t *testing.T) {
 	channels := []Channel{

@@ -19,6 +19,7 @@ func main() {
 	// 1. Parse CLI flags and Environment Variables
 	outDirFlag := flag.String("outdir", "", "Target directory for the generated index.m3u")
 	configFlag := flag.String("config", "", "Path to a TOML config file (required)")
+	forceFlag := flag.Bool("force", false, "Regenerate the playlist even if it already exists")
 	flag.Parse()
 
 	// Config path: Flag -> ENV (mandatory — app won't run without it)
@@ -43,6 +44,20 @@ func main() {
 	}
 
 	log.SetFlags(log.Ldate | log.Ltime)
+
+	// Skip all work when the destination already exists, unless --force.
+	outputPath := filepath.Join(listDir, playlist.OutputFile)
+	if !*forceFlag {
+		exists, err := playlist.Exists(outputPath)
+		if err != nil {
+			log.Fatalf("Failed to check output playlist: %v", err)
+		}
+		if exists {
+			log.Printf("Playlist already exists at %s; skipping (use --force to regenerate)", outputPath)
+			return
+		}
+	}
+
 	log.Printf("Starting IPTV Playlist Pipeline for %d playlist(s)", len(cfg.PlaylistURLs))
 
 	// 2. Fetch Playlists
@@ -84,7 +99,6 @@ func main() {
 	log.Printf("Validation complete: %d valid out of %d channels", len(validChannels), len(channels))
 
 	// 5. Write Output Playlist
-	outputPath := filepath.Join(listDir, playlist.OutputFile)
 	if err := playlist.WritePlaylist(outputPath, validChannels); err != nil {
 		log.Fatalf("Failed to write output playlist: %v", err)
 	}

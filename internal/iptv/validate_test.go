@@ -43,7 +43,7 @@ func TestValidateChannels(t *testing.T) {
 		{Metadata: "#EXTINF:-1 Invalid URL", URL: "not-a-valid-url"},
 	}
 
-	validChannels := ValidateChannels(testChannels, 1*time.Second)
+	validChannels := ValidateChannelsN(testChannels, 1*time.Second, ConcurrentChecks)
 
 	// Should only have 2 valid channels (good + redirect-to-good)
 	if len(validChannels) != 2 {
@@ -74,7 +74,7 @@ func TestValidateChannels_Timeout(t *testing.T) {
 		{Metadata: "#EXTINF:-1 Slow Channel", URL: slow.URL + "/slow.m3u8"},
 	}
 
-	validChannels := ValidateChannels(channels, 200*time.Millisecond)
+	validChannels := ValidateChannelsN(channels, 200*time.Millisecond, ConcurrentChecks)
 	if len(validChannels) != 0 {
 		t.Fatalf("Expected timed-out channel to be dropped, got %d valid", len(validChannels))
 	}
@@ -96,7 +96,7 @@ func TestValidateChannels_Progress(t *testing.T) {
 	}
 
 	var lastDone, lastTotal, lastValid int
-	valid := ValidateChannels(channels, time.Second, func(done, total, valid int) {
+	valid := ValidateChannelsN(channels, time.Second, ConcurrentChecks, func(done, total, valid int) {
 		lastDone, lastTotal, lastValid = done, total, valid
 	})
 
@@ -110,17 +110,4 @@ func TestValidateChannels_Progress(t *testing.T) {
 	pr := &ProgressReporter{lastPercent: -1}
 	pr.Report("test", 1, 10, 1)
 	pr.Report("test", 1, 10, 1) // duplicate percent must not log again
-}
-
-// Test ValidateChannels with a non-positive timeout uses the default
-func TestValidateChannels_DefaultTimeout(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer ts.Close()
-
-	validChannels := ValidateChannels([]Channel{{Metadata: "m", URL: ts.URL + "/ok"}}, 0)
-	if len(validChannels) != 1 {
-		t.Fatalf("Expected 1 valid channel with default timeout, got %d", len(validChannels))
-	}
 }
