@@ -9,29 +9,53 @@ import (
 	"m3u-cleaner/internal/iptv"
 )
 
-// Config holds tunable runtime settings loaded from a TOML file.
-// Optional fields fall back to their default value via DefaultConfig.
-type Config struct {
+const (
+	defaultRadioTimeoutSeconds = 15
+	defaultRadioConcurrency    = 20
+)
+
+// Section holds the settings shared by the TV and radio pipelines.
+type Section struct {
 	// PlaylistURLs is the list of M3U playlist URLs to fetch and process.
 	PlaylistURLs []string `toml:"playlist_urls"`
 	// ExcludeChannels is a list of substrings (case-insensitive) matched
 	// against channel EXTINF metadata; matching channels are dropped.
 	ExcludeChannels []string `toml:"exclude_channels"`
-	// MinResolutionHeight drops channels explicitly below this height.
-	MinResolutionHeight int `toml:"min_resolution_height"`
 	// TimeoutSeconds is the per-request timeout for stream validation.
 	TimeoutSeconds int `toml:"timeout_seconds"`
 	// Concurrency is the number of parallel stream checks.
 	Concurrency int `toml:"concurrency"`
 }
 
-// DefaultConfig returns a Config populated with the package defaults for
+// TVSection is the [tv] table. Resolution filtering applies only to TV.
+type TVSection struct {
+	Section
+	// MinResolutionHeight drops channels explicitly below this height.
+	MinResolutionHeight int `toml:"min_resolution_height"`
+}
+
+// Config holds the two independently tuned playlist sections.
+// Optional fields fall back to their default value via DefaultConfig.
+type Config struct {
+	TV    TVSection `toml:"tv"`
+	Radio Section   `toml:"radio"`
+}
+
+// DefaultConfig returns a Config populated with the per-section defaults for
 // optional fields. PlaylistURLs is not defaulted — it must be provided.
 func DefaultConfig() Config {
 	return Config{
-		MinResolutionHeight: iptv.MinResolutionHeight,
-		TimeoutSeconds:      iptv.TimeoutSeconds,
-		Concurrency:         iptv.ConcurrentChecks,
+		TV: TVSection{
+			Section: Section{
+				TimeoutSeconds: iptv.TimeoutSeconds,
+				Concurrency:    iptv.ConcurrentChecks,
+			},
+			MinResolutionHeight: iptv.MinResolutionHeight,
+		},
+		Radio: Section{
+			TimeoutSeconds: defaultRadioTimeoutSeconds,
+			Concurrency:    defaultRadioConcurrency,
+		},
 	}
 }
 
@@ -55,17 +79,27 @@ func LoadConfig(path string) (Config, error) {
 // Returns an error listing all failures, or nil if the config is valid.
 func (c Config) Validate() error {
 	var errs []string
-	if len(c.PlaylistURLs) == 0 {
-		errs = append(errs, "playlist_urls must contain at least one URL")
+	if len(c.TV.PlaylistURLs) == 0 && len(c.Radio.PlaylistURLs) == 0 {
+		errs = append(errs, "at least one of tv.playlist_urls or radio.playlist_urls must contain a URL")
 	}
-	if c.MinResolutionHeight <= 0 {
-		errs = append(errs, "min_resolution_height must be positive")
+	if len(c.TV.PlaylistURLs) > 0 {
+		if c.TV.MinResolutionHeight <= 0 {
+			errs = append(errs, "tv.min_resolution_height must be positive")
+		}
+		if c.TV.TimeoutSeconds <= 0 {
+			errs = append(errs, "tv.timeout_seconds must be positive")
+		}
+		if c.TV.Concurrency <= 0 {
+			errs = append(errs, "tv.concurrency must be positive")
+		}
 	}
-	if c.TimeoutSeconds <= 0 {
-		errs = append(errs, "timeout_seconds must be positive")
-	}
-	if c.Concurrency <= 0 {
-		errs = append(errs, "concurrency must be positive")
+	if len(c.Radio.PlaylistURLs) > 0 {
+		if c.Radio.TimeoutSeconds <= 0 {
+			errs = append(errs, "radio.timeout_seconds must be positive")
+		}
+		if c.Radio.Concurrency <= 0 {
+			errs = append(errs, "radio.concurrency must be positive")
+		}
 	}
 	if len(errs) > 0 {
 		return fmt.Errorf("config validation failed:\n  - %s", strings.Join(errs, "\n  - "))

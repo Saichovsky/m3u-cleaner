@@ -8,68 +8,133 @@ import (
 	"m3u-cleaner/internal/iptv"
 )
 
-// Test LoadConfig with a valid TOML file
-func TestLoadConfig(t *testing.T) {
+func writeConfigFile(t *testing.T, content string) string {
+	t.Helper()
 	path := filepath.Join(t.TempDir(), "config.toml")
-	content := `
-playlist_urls = ["https://example.com/playlist1.m3u"]
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+	return path
+}
+
+// Test LoadConfig reads both sections with explicit values.
+func TestLoadConfig(t *testing.T) {
+	path := writeConfigFile(t, `
+[tv]
+playlist_urls = ["https://example.com/tv.m3u"]
 exclude_channels = ["bbc pashto", "  cbeebies  "]
 min_resolution_height = 480
 timeout_seconds = 5
 concurrency = 20
-`
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-		t.Fatalf("Failed to write config: %v", err)
-	}
+
+[radio]
+playlist_urls = ["https://example.com/radio.m3u"]
+exclude_channels = ["ghett"]
+timeout_seconds = 15
+concurrency = 10
+`)
 
 	cfg, err := LoadConfig(path)
 	if err != nil {
 		t.Fatalf("LoadConfig returned error: %v", err)
 	}
 
-	if len(cfg.PlaylistURLs) != 1 || cfg.PlaylistURLs[0] != "https://example.com/playlist1.m3u" {
-		t.Errorf("Unexpected playlist URLs: %v", cfg.PlaylistURLs)
+	if len(cfg.TV.PlaylistURLs) != 1 || cfg.TV.PlaylistURLs[0] != "https://example.com/tv.m3u" {
+		t.Errorf("Unexpected TV playlist URLs: %v", cfg.TV.PlaylistURLs)
 	}
-	if len(cfg.ExcludeChannels) != 2 || cfg.ExcludeChannels[0] != "bbc pashto" || cfg.ExcludeChannels[1] != "  cbeebies  " {
-		t.Errorf("Unexpected exclude channels: %v", cfg.ExcludeChannels)
+	if len(cfg.TV.ExcludeChannels) != 2 || cfg.TV.ExcludeChannels[0] != "bbc pashto" || cfg.TV.ExcludeChannels[1] != "  cbeebies  " {
+		t.Errorf("Unexpected TV exclude channels: %v", cfg.TV.ExcludeChannels)
 	}
-	if cfg.MinResolutionHeight != 480 {
-		t.Errorf("MinResolutionHeight = %d, expected 480", cfg.MinResolutionHeight)
+	if cfg.TV.MinResolutionHeight != 480 {
+		t.Errorf("TV MinResolutionHeight = %d, expected 480", cfg.TV.MinResolutionHeight)
 	}
-	if cfg.TimeoutSeconds != 5 {
-		t.Errorf("TimeoutSeconds = %d, expected 5", cfg.TimeoutSeconds)
+	if cfg.TV.TimeoutSeconds != 5 {
+		t.Errorf("TV TimeoutSeconds = %d, expected 5", cfg.TV.TimeoutSeconds)
 	}
-	if cfg.Concurrency != 20 {
-		t.Errorf("Concurrency = %d, expected 20", cfg.Concurrency)
+	if cfg.TV.Concurrency != 20 {
+		t.Errorf("TV Concurrency = %d, expected 20", cfg.TV.Concurrency)
+	}
+
+	if len(cfg.Radio.PlaylistURLs) != 1 || cfg.Radio.PlaylistURLs[0] != "https://example.com/radio.m3u" {
+		t.Errorf("Unexpected radio playlist URLs: %v", cfg.Radio.PlaylistURLs)
+	}
+	if len(cfg.Radio.ExcludeChannels) != 1 || cfg.Radio.ExcludeChannels[0] != "ghett" {
+		t.Errorf("Unexpected radio exclude channels: %v", cfg.Radio.ExcludeChannels)
+	}
+	if cfg.Radio.TimeoutSeconds != 15 {
+		t.Errorf("Radio TimeoutSeconds = %d, expected 15", cfg.Radio.TimeoutSeconds)
+	}
+	if cfg.Radio.Concurrency != 10 {
+		t.Errorf("Radio Concurrency = %d, expected 10", cfg.Radio.Concurrency)
 	}
 }
 
-// Test LoadConfig uses defaults for unset fields
+// Test LoadConfig uses per-section defaults for unset fields.
 func TestLoadConfig_Defaults(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "config.toml")
-	content := `
-playlist_urls = ["https://example.com/test.m3u"]
-min_resolution_height = 480
-`
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-		t.Fatalf("Failed to write config: %v", err)
-	}
+	path := writeConfigFile(t, `
+[tv]
+playlist_urls = ["https://example.com/tv.m3u"]
+
+[radio]
+playlist_urls = ["https://example.com/radio.m3u"]
+`)
 
 	cfg, err := LoadConfig(path)
 	if err != nil {
 		t.Fatalf("LoadConfig returned error: %v", err)
 	}
-	if cfg.MinResolutionHeight != 480 {
-		t.Errorf("MinResolutionHeight = %d, expected 480", cfg.MinResolutionHeight)
+	if cfg.TV.MinResolutionHeight != iptv.MinResolutionHeight {
+		t.Errorf("TV MinResolutionHeight = %d, expected default %d", cfg.TV.MinResolutionHeight, iptv.MinResolutionHeight)
 	}
-	if cfg.TimeoutSeconds != iptv.TimeoutSeconds {
-		t.Errorf("TimeoutSeconds = %d, expected default %d", cfg.TimeoutSeconds, iptv.TimeoutSeconds)
+	if cfg.TV.TimeoutSeconds != iptv.TimeoutSeconds {
+		t.Errorf("TV TimeoutSeconds = %d, expected default %d", cfg.TV.TimeoutSeconds, iptv.TimeoutSeconds)
 	}
-	if cfg.Concurrency != iptv.ConcurrentChecks {
-		t.Errorf("Concurrency = %d, expected default %d", cfg.Concurrency, iptv.ConcurrentChecks)
+	if cfg.TV.Concurrency != iptv.ConcurrentChecks {
+		t.Errorf("TV Concurrency = %d, expected default %d", cfg.TV.Concurrency, iptv.ConcurrentChecks)
 	}
-	if len(cfg.PlaylistURLs) != 1 || cfg.PlaylistURLs[0] != "https://example.com/test.m3u" {
-		t.Errorf("PlaylistURLs = %v, expected [https://example.com/test.m3u]", cfg.PlaylistURLs)
+	if cfg.Radio.TimeoutSeconds != defaultRadioTimeoutSeconds {
+		t.Errorf("Radio TimeoutSeconds = %d, expected default %d", cfg.Radio.TimeoutSeconds, defaultRadioTimeoutSeconds)
+	}
+	if cfg.Radio.Concurrency != defaultRadioConcurrency {
+		t.Errorf("Radio Concurrency = %d, expected default %d", cfg.Radio.Concurrency, defaultRadioConcurrency)
+	}
+}
+
+// Test LoadConfig accepts a radio-only config.
+func TestLoadConfig_RadioOnly(t *testing.T) {
+	path := writeConfigFile(t, `
+[radio]
+playlist_urls = ["https://example.com/radio.m3u"]
+`)
+
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig returned error: %v", err)
+	}
+	if len(cfg.TV.PlaylistURLs) != 0 {
+		t.Errorf("TV PlaylistURLs = %v, expected none", cfg.TV.PlaylistURLs)
+	}
+	if len(cfg.Radio.PlaylistURLs) != 1 || cfg.Radio.PlaylistURLs[0] != "https://example.com/radio.m3u" {
+		t.Errorf("Unexpected radio playlist URLs: %v", cfg.Radio.PlaylistURLs)
+	}
+}
+
+// Test LoadConfig accepts a TV-only config.
+func TestLoadConfig_TVOnly(t *testing.T) {
+	path := writeConfigFile(t, `
+[tv]
+playlist_urls = ["https://example.com/tv.m3u"]
+`)
+
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig returned error: %v", err)
+	}
+	if len(cfg.TV.PlaylistURLs) != 1 {
+		t.Errorf("Unexpected TV playlist URLs: %v", cfg.TV.PlaylistURLs)
+	}
+	if len(cfg.Radio.PlaylistURLs) != 0 {
+		t.Errorf("Radio PlaylistURLs = %v, expected none", cfg.Radio.PlaylistURLs)
 	}
 }
 
@@ -83,16 +148,13 @@ func TestLoadConfig_EmptyPathRequired(t *testing.T) {
 
 // Test LoadConfig returns an error for an invalid TOML file
 func TestLoadConfig_Invalid(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "config.toml")
-	if err := os.WriteFile(path, []byte("not: [valid toml"), 0644); err != nil {
-		t.Fatalf("Failed to write config: %v", err)
-	}
+	path := writeConfigFile(t, "not: [valid toml")
 	if _, err := LoadConfig(path); err == nil {
 		t.Error("Expected error for invalid TOML, got nil")
 	}
 }
 
-// Test Validate rejects empty playlist_urls
+// Test Validate rejects a config with no playlists in either section.
 func TestValidate_MissingPlaylistURLs(t *testing.T) {
 	cfg := DefaultConfig()
 	if err := cfg.Validate(); err == nil {
@@ -100,7 +162,7 @@ func TestValidate_MissingPlaylistURLs(t *testing.T) {
 	}
 }
 
-// Test Validate rejects non-positive values
+// Test Validate rejects non-positive values in each section.
 func TestValidate_NonPositiveValues(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -108,45 +170,80 @@ func TestValidate_NonPositiveValues(t *testing.T) {
 		wantErr   bool
 	}{
 		{
-			name: "min_resolution_height zero",
+			name: "tv min_resolution_height zero",
 			modifyCfg: func(c Config) Config {
-				c.PlaylistURLs = []string{"https://example.com/play.m3u"}
-				c.MinResolutionHeight = 0
+				c.TV.PlaylistURLs = []string{"https://example.com/tv.m3u"}
+				c.TV.MinResolutionHeight = 0
 				return c
 			},
 			wantErr: true,
 		},
 		{
-			name: "min_resolution_height negative",
+			name: "tv min_resolution_height negative",
 			modifyCfg: func(c Config) Config {
-				c.PlaylistURLs = []string{"https://example.com/play.m3u"}
-				c.MinResolutionHeight = -1
+				c.TV.PlaylistURLs = []string{"https://example.com/tv.m3u"}
+				c.TV.MinResolutionHeight = -1
 				return c
 			},
 			wantErr: true,
 		},
 		{
-			name: "timeout_seconds zero",
+			name: "tv timeout_seconds zero",
 			modifyCfg: func(c Config) Config {
-				c.PlaylistURLs = []string{"https://example.com/play.m3u"}
-				c.TimeoutSeconds = 0
+				c.TV.PlaylistURLs = []string{"https://example.com/tv.m3u"}
+				c.TV.TimeoutSeconds = 0
 				return c
 			},
 			wantErr: true,
 		},
 		{
-			name: "concurrency zero",
+			name: "tv concurrency zero",
 			modifyCfg: func(c Config) Config {
-				c.PlaylistURLs = []string{"https://example.com/play.m3u"}
-				c.Concurrency = 0
+				c.TV.PlaylistURLs = []string{"https://example.com/tv.m3u"}
+				c.TV.Concurrency = 0
 				return c
 			},
 			wantErr: true,
 		},
 		{
-			name: "valid config with defaults",
+			name: "radio timeout_seconds zero",
 			modifyCfg: func(c Config) Config {
-				c.PlaylistURLs = []string{"https://example.com/play.m3u"}
+				c.Radio.PlaylistURLs = []string{"https://example.com/radio.m3u"}
+				c.Radio.TimeoutSeconds = 0
+				return c
+			},
+			wantErr: true,
+		},
+		{
+			name: "radio concurrency zero",
+			modifyCfg: func(c Config) Config {
+				c.Radio.PlaylistURLs = []string{"https://example.com/radio.m3u"}
+				c.Radio.Concurrency = 0
+				return c
+			},
+			wantErr: true,
+		},
+		{
+			name: "tv only with defaults",
+			modifyCfg: func(c Config) Config {
+				c.TV.PlaylistURLs = []string{"https://example.com/tv.m3u"}
+				return c
+			},
+			wantErr: false,
+		},
+		{
+			name: "radio only with defaults",
+			modifyCfg: func(c Config) Config {
+				c.Radio.PlaylistURLs = []string{"https://example.com/radio.m3u"}
+				return c
+			},
+			wantErr: false,
+		},
+		{
+			name: "both sections",
+			modifyCfg: func(c Config) Config {
+				c.TV.PlaylistURLs = []string{"https://example.com/tv.m3u"}
+				c.Radio.PlaylistURLs = []string{"https://example.com/radio.m3u"}
 				return c
 			},
 			wantErr: false,

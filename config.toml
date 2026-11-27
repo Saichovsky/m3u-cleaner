@@ -1,8 +1,8 @@
 # Sample configuration for m3u-cleaner.
 # A config file is mandatory — pass via --config=config.toml or CONFIG=config.toml.
 
-# REQUIRED: Playlist URLs to fetch and process. Each must be a valid HTTP(S)
-# URL pointing to an M3U playlist.
+# TV section: resolution filtering and TV-specific validation settings.
+[tv]
 playlist_urls = [
   "https://iptv-org.github.io/iptv/countries/ke.m3u",
   "https://iptv-org.github.io/iptv/countries/uk.m3u",
@@ -19,11 +19,29 @@ exclude_channels = [
   # "al jazeera",
 ]
 
-# Minimum resolution: channels explicitly below this are removed.
+# Minimum resolution: TV channels explicitly below this are removed.
 min_resolution_height = 720
 
-# Per-request timeout (seconds) for stream URL validation.
+# Per-request timeout (seconds) for TV stream validation.
 timeout_seconds = 10
 
-# Number of concurrent stream checks.
+# Number of concurrent TV stream checks.
 concurrency = 50
+
+# Radio section: entries are tagged radio="true" in the output.
+[radio]
+playlist_urls = [
+  "https://raw.githubusercontent.com/AlonDrilich/radio-playlists/refs/heads/main/countries/ke.m3u",
+]
+
+# Radio channels to exclude (same substring matching as the TV section).
+exclude_channels = [
+  "Ghetto Radio",
+  "CARIBBEAN",
+]
+
+# Per-request timeout (seconds) for radio stream validation.
+timeout_seconds = 15
+
+# Number of concurrent radio stream checks.
+concurrency = 20
